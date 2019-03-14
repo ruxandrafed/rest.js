@@ -12,6 +12,9 @@ function authenticationRequestError (state, error, options) {
   }
 
   if (error.status === 401 && otpRequired && error.request && error.request.headers['x-github-otp']) {
+    if (state.otp) {
+      delete state.otp // no longer valid, request again
+    }
     throw new HttpError('Invalid one-time password for two-factor authentication', 401, error.headers, options)
   }
 

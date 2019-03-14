@@ -46,4 +46,58 @@ describe('https://github.com/octokit/rest.js/issues/1279', () => {
         return octokit.authorization.listAuthorizations({ per_page: 100 })
       })
   })
+
+  it('2fa code gets reset once it becomes invalid and user is prompted again', () => {
+    nock('https://authentication-test-host.com', {
+      reqheaders: {
+        authorization: 'Basic dXNlcm5hbWU6cGFzc3dvcmQ='
+      }
+    })
+      .get('/')
+      .reply(401, {}, {
+        'x-github-otp': 'required; app'
+      })
+
+    nock('https://authentication-test-host.com', {
+      reqheaders: {
+        authorization: 'Basic dXNlcm5hbWU6cGFzc3dvcmQ=',
+        'x-github-otp': '123456'
+      }
+    })
+      .get('/')
+      .reply(200, {})
+
+    // OTP code becomes invalid
+    nock('https://authentication-test-host.com')
+      .get('/authorizations?per_page=100')
+      .reply(401, {}, {
+        'x-github-otp': 'required; app'
+      })
+
+    // OTP header not persisted so that user is prompted again
+    nock('https://authentication-test-host.com')
+      .delete('/authorizations/123')
+      .reply(function () {
+        expect(this.req.headers).to.not.have.property('x-github-otp')
+      })
+
+    const octokit = new Octokit({
+      baseUrl: 'https://authentication-test-host.com',
+      auth: {
+        username: 'username',
+        password: 'password',
+        on2fa () {
+          return Promise.resolve(123456)
+        }
+      }
+    })
+
+    return octokit.request('/')
+      .then(() => {
+        return octokit.authorization.listAuthorizations({ per_page: 100 })
+      })
+      .catch(() => {
+        return octokit.authorization.deleteAuthorization({ authorization_id: 123 })
+      })
+  })
 })
